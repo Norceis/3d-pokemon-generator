@@ -132,8 +132,8 @@ def interpolate_pokemon(cfg: Config, ssg_model_1: SSGmodelBase, ssg_model_2: SSG
             if cfg.bin:
                 fake_ = fake_ > 0.5
 
-            save_path = os.path.join(save_dir, f"fake_{i:02d}_alpha{alpha_list[i]}.h5")
-            save_h5_single(save_path, fake_, ssg_model.scale + 1)
+            save_path = os.path.join(save_dir, f"fake_{i:02d}_alpha{alpha_list[i % len(alpha_list)]}.h5") #TODO make better naming convention
+            save_h5_single(save_path, fake_, ssg_model_1.scale + 1)
 
 
 if __name__ == '__main__':
