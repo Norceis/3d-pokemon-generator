@@ -22,9 +22,9 @@ class Config(object):
         self.model_dir = os.path.join(self.exp_dir, 'model')
 
         # experiment paths
-        self.exp_dir_second_network = os.path.join(self.proj_dir_second_network, self.tag_second_network)
-        self.log_dir_second_network = os.path.join(self.exp_dir_second_network, 'log')
-        self.model_dir_second_network = os.path.join(self.exp_dir_second_network, 'model')
+        # self.exp_dir_second_network = os.path.join(self.proj_dir_second_network, self.tag_second_network)
+        # self.log_dir_second_network = os.path.join(self.exp_dir_second_network, 'log')
+        # self.model_dir_second_network = os.path.join(self.exp_dir_second_network, 'model')
 
         # load saved config if not training
         if not self.is_train:
@@ -66,13 +66,13 @@ class Config(object):
         self._add_data_config(parser_train)
         self._add_network_config(parser_train)
         self._add_training_config(parser_train)
-        self._add_second_network(parser_train)
+        # self._add_second_network(parser_train)
 
         # subparser for test
         parser_test = subparsers.add_parser('test')
         self._add_basic_config(parser_test)
         self._add_testing_config(parser_test)
-        self._add_second_network(parser_test)
+        # self._add_second_network(parser_test)
 
         args = parser.parse_args()
         return parser, args
@@ -88,6 +88,7 @@ class Config(object):
         """arguments for data"""
         group = parser.add_argument_group('data')
         group.add_argument('-s', '--src_path', type=str, default=None, help='path to reference data')
+        group.add_argument('-ss', '--second_src_path', type=str, default=None, help='path to second reference data')
 
     def _add_network_config(self, parser):
         """arguments for network structure"""

@@ -297,6 +297,37 @@ class SSGmodelBase(ABC):
         self.prev_opt_feats = None # FIXME: move this variable to _draw_fake_in_training
         self.save_ckpt('latest')
 
+    def _train_single_scale_interpolated(self, real_data: torch.Tensor, second_data: torch.Tensor):
+        """train current scale for n iterations"""
+        print(f"scale: {self.scale}, real shape dimensions: {real_data.shape}, noise amp: {self.noiseAmp_list[-1]}")
+        pbar = tqdm(range(self.config.n_iters), desc=f"Train scale {self.scale}")
+        self.prev_opt_feats = None  # buffer of prev scale features for reconstruction
+
+        flag = 1
+
+        for i in pbar:
+            if not i % 500:
+                flag = not flag
+                print(f'\nSWITCHEROOO, now it is {int(flag)} turn')
+
+            if flag:
+                losses = self._updateStep(second_data)
+            else:
+                losses = self._updateStep(real_data)
+
+            pbar.set_postfix(OrderedDict({k: v.item() for k, v in losses.items()}))
+
+            if self.config.vis_frequency is not None and self.clock.step % self.config.vis_frequency == 0:
+                self._visualize_in_training(real_data)
+
+            self.clock.tick()
+
+            if self.clock.step % self.config.save_frequency == 0:
+                self.save_ckpt()
+
+        self.prev_opt_feats = None  # FIXME: move this variable to _draw_fake_in_training
+        self.save_ckpt('latest')
+
     def train(self, real_data_list: list):
         """train on a list of multi-scale 3D shapes (coarse-to-fine).
 
@@ -330,11 +361,51 @@ class SSGmodelBase(ABC):
             self._train_single_scale(self.real_list[s])
             self.scale += 1
 
+    def train_interpolated_model(self, real_data_list: list, second_data_list: list):
+        """train on a list of multi-scale 3D shapes (coarse-to-fine).
+
+        Args:
+            real_data_list (list): a list of torch.Tensor of shape (H_i, W_i, D_i)
+        """
+        self._set_real_data(real_data_list)
+        self._set_second_data(second_data_list)
+        self.n_scales = len(self.real_list)
+
+        for s in range(self.scale, self.n_scales):
+            # init networks and optimizers for each scale
+            # self.netD is reused directly
+            self.netG.init_next_scale()
+            self.netG.to(self.device)
+            assert self.netG.n_scales == s + 1
+
+            self._set_optimizer()
+            self._set_tbwriter()
+            self.clock.reset()
+
+            # draw fixed noise for reconstruction
+            if self.noiseOpt_init is None:
+                torch.manual_seed(1234)
+                self.noiseOpt_init = torch.randn_like(self.real_list[0])
+
+            # compute std of added gaussian noise
+            noise_amp = self._compute_noise_sigma(s)
+            self.noiseAmp_list.append(noise_amp)
+
+            # train for current scale
+            self._train_single_scale_interpolated(self.real_list[s], self.second_list[s])
+            self.scale += 1
+
     def _set_real_data(self, real_data_list: list):
         """set a list of multi-scale 3D shapes for training"""
         print("real data dimensions: ", [x.shape for x in real_data_list])
         self.real_list = [torch.tensor(x, dtype=torch.float32, device=self.device).unsqueeze(0).unsqueeze(0) for x in real_data_list]
         self.real_sizes = [x.shape[-3:] for x in self.real_list]
+
+    def _set_second_data(self, second_data_list: list):
+        """set a list of multi-scale 3D shapes for training"""
+        print("real data dimensions: ", [x.shape for x in second_data_list])
+        self.second_list = [torch.tensor(x, dtype=torch.float32, device=self.device).unsqueeze(0).unsqueeze(0) for x in second_data_list]
+        self.second_sizes = [x.shape[-3:] for x in self.second_list]
 
     def _compute_noise_sigma(self, scale: int):
         """compute std of added gaussian noise at scale i"""
