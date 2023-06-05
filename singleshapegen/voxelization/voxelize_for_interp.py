@@ -34,6 +34,16 @@ def load_mesh(path: str, normalize=True):
         mesh.vertices = verts
     return mesh
 
+def center_array(bigger_array, smaller_array):
+    shape1 = np.array(bigger_array.shape)
+    shape2 = np.array(smaller_array.shape)
+
+    start_index = (shape1 - shape2) // 2
+    end_index = start_index + shape2
+
+    bigger_array[start_index[0]:end_index[0], start_index[1]:end_index[1], start_index[2]:end_index[2]] = smaller_array
+    return bigger_array
+
 
 def multiscale_voxelization_binvox(path: str, resolution_list: list, min_size: int):
     """voxelize a mesh at different resolution (multi-scale)
@@ -92,7 +102,9 @@ def multiscale_voxelization_binvox(path: str, resolution_list: list, min_size: i
                 size_valid.tolist(), mode='trilinear', align_corners=True)[0, 0].numpy() > 0.5
 
         cubed_data = np.zeros(shape=cube_size)
-        cubed_data[:data.shape[0], :data.shape[1], :data.shape[2]] = data
+
+        cubed_data = center_array(cubed_data, data)
+        # cubed_data[:data.shape[0], :data.shape[1], :data.shape[2]] = data
         # print(f'{data.shape} XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX')
         voxel_list.append(cubed_data)
 

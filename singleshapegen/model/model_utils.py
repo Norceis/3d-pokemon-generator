@@ -15,7 +15,7 @@ def calc_gradient_penalty(netD, real_data: torch.Tensor, fake_data: torch.Tensor
     """
     alpha = torch.rand(1, 1)
     alpha = alpha.expand(real_data.size())
-    alpha = alpha.to(device) #gpu) #if use_cuda else alpha
+    alpha = alpha.to(device)  # gpu) #if use_cuda else alpha
 
     interpolates = alpha * real_data + ((1 - alpha) * fake_data)
 
@@ -25,11 +25,50 @@ def calc_gradient_penalty(netD, real_data: torch.Tensor, fake_data: torch.Tensor
     disc_interpolates = netD(interpolates)
 
     gradients = torch.autograd.grad(outputs=disc_interpolates, inputs=interpolates,
-                            grad_outputs=torch.ones(disc_interpolates.size()).to(device),
-                            create_graph=True, retain_graph=True, only_inputs=True)[0]
-    #LAMBDA = 1
-    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() # average over sptial dimensions
+                                    grad_outputs=torch.ones(disc_interpolates.size()).to(device),
+                                    create_graph=True, retain_graph=True, only_inputs=True)[0]
+    # LAMBDA = 1
+    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()  # average over sptial dimensions
     return gradient_penalty
+
+
+def calc_gradient_penalty_2_heads(netD, real_data: torch.Tensor, second_data: torch.Tensor, fake_data: torch.Tensor,
+                                  device: torch.device):
+    """calculate gradient penalty (WGAN-GP), average over sptial dimensions.
+
+    Args:
+        netD (nn.Module): discriminator (critic) network
+        real_data (torch.Tensor): real (reference) data
+        fake_data (torch.Tensor): fake (generated) data
+
+    Returns:
+        gradient penalty: torch.Tensor
+    """
+    alpha = torch.rand(1, 1)
+    alpha = alpha.expand(real_data.size())
+    alpha = alpha.to(device)  # gpu) #if use_cuda else alpha
+
+    interpolates_real = alpha * real_data + ((1 - alpha) * fake_data)
+    interpolates_real = interpolates_real.to(device)
+    interpolates_real = torch.autograd.Variable(interpolates_real, requires_grad=True)
+    disc_interpolates_real = netD(interpolates_real)
+    gradients_real = torch.autograd.grad(outputs=disc_interpolates_real, inputs=interpolates_real,
+                                         grad_outputs=torch.ones(disc_interpolates_real.size()).to(device),
+                                         create_graph=True, retain_graph=True, only_inputs=True)[0]
+    gradient_penalty_real = ((gradients_real.norm(2, dim=1) - 1) ** 2).mean()  # average over sptial dimensions
+
+    interpolates_real_second = alpha * second_data + ((1 - alpha) * fake_data)
+    interpolates_real_second = interpolates_real_second.to(device)
+    interpolates_real_second = torch.autograd.Variable(interpolates_real_second, requires_grad=True)
+    disc_interpolates_real_second = netD(interpolates_real_second)
+    gradients_real_second = torch.autograd.grad(outputs=disc_interpolates_real_second, inputs=interpolates_real_second,
+                                                grad_outputs=torch.ones(disc_interpolates_real_second.size()).to(
+                                                    device),
+                                                create_graph=True, retain_graph=True, only_inputs=True)[0]
+    gradient_penalty_real_second = (
+                (gradients_real_second.norm(2, dim=1) - 1) ** 2).mean()  # average over sptial dimensions
+
+    return (gradient_penalty_real + gradient_penalty_real_second) / 2
 
 
 def set_require_grads(model, require_grad: bool):
@@ -52,8 +91,8 @@ def generate_tri_plane_noise(res_x: int, res_y: int, res_z: int, nf: int, noise_
     Returns:
         noise maps: three noise tensors
     """
-    noise = [(torch.randn(1, nf, res_y, res_z, device=device) * noise_amp).detach(), 
-             (torch.randn(1, nf, res_x, res_z, device=device) * noise_amp).detach(), 
+    noise = [(torch.randn(1, nf, res_y, res_z, device=device) * noise_amp).detach(),
+             (torch.randn(1, nf, res_x, res_z, device=device) * noise_amp).detach(),
              (torch.randn(1, nf, res_x, res_y, device=device) * noise_amp).detach()]
     return noise
 
@@ -77,13 +116,13 @@ def make_coord(H: int, W: int, D: int, device: torch.Tensor, normalize=True):
     Returns:
         torch.Tensor: point coordinates of shape (H, W, D, 3)
     """
-    xs = torch.arange(H, device=device).float() 
+    xs = torch.arange(H, device=device).float()
     ys = torch.arange(W, device=device).float()
     zs = torch.arange(D, device=device).float()
     if normalize:
-        xs = xs / (H - 1) * 2 - 1 # (-1, 1)
-        ys = ys / (W - 1) * 2 - 1 # (-1, 1)
-        zs = zs / (D - 1) * 2 - 1 # (-1, 1)
+        xs = xs / (H - 1) * 2 - 1  # (-1, 1)
+        ys = ys / (W - 1) * 2 - 1  # (-1, 1)
+        zs = zs / (D - 1) * 2 - 1  # (-1, 1)
 
     coords = torch.stack(torch.meshgrid(xs, ys, zs), dim=-1)
     return coords
@@ -106,6 +145,7 @@ def slice_volume_along_xyz(volume: np.ndarray):
 
 class TrainClock(object):
     """ Clock object to track epoch and step during training"""
+
     def __init__(self):
         self.epoch = 1
         self.minibatch = 0

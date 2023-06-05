@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import cat
 from .blocks import ConvBlock, TriplaneConvs, Convs3DSkipAdd, make_mlp
 
 
@@ -20,10 +21,15 @@ def get_network(config, name):
                 config.feat_dim, config.use_norm, config.mlp_dim, config.mlp_layers)
         elif config.G_struct == "conv3d":
             return GrowingGenerator3D(config.G_nc, config.G_layers, config.use_norm)
+        elif config.G_struct == 'triplane_2_heads':
+            return GrowingGeneratorTriplane(config.G_nc, config.G_layers, config.pool_dim,
+                                            config.feat_dim, config.use_norm, config.mlp_dim, config.mlp_layers)
         else:
             raise NotImplementedError
     elif name == "D":
         return WDiscriminator(config.D_nc, config.D_layers, config.use_norm)
+    elif name == 'D2':
+        return WDiscriminator_2_heads(config.D_nc, config.D_layers, config.use_norm)
     else:
         raise NotImplementedError
 
@@ -57,6 +63,45 @@ class WDiscriminator(nn.Module):
         x = self.tail(x)
         return x
 
+class WDiscriminator_2_heads(nn.Module):
+    def __init__(self, n_channels=32, n_layers=3, use_norm=True):
+        """A 3D convolutional discriminator.
+            Each layer's kernel size, stride and padding size are fixed.
+
+        Args:
+            n_channels (int, optional): number of channels for each layer. Defaults to 32.
+            n_layers (int, optional): number of conv layers. Defaults to 3.
+            use_norm (bool, optional): use normalization layer. Defaults to True.
+        """
+        super(WDiscriminator_2_heads, self).__init__()
+        ker_size, stride, pad = 3, 2, 1 # hard-coded
+        self.head = ConvBlock(1, n_channels, ker_size, stride, pad, use_norm, sdim='3d')
+
+        self.body = nn.Sequential()
+        for i in range(n_layers - 2):
+            ker_size, stride, pad = 3, 1, 0 # hard-coded
+            block = ConvBlock(n_channels, n_channels, ker_size, stride, pad, use_norm, sdim='3d')
+            self.body.add_module('block%d' % (i + 1), block)
+
+        ker_size, stride, pad = 3, 1, 0 # hard-coded
+        self.tail = nn.Conv3d(n_channels, 1, ker_size, stride, pad)
+        # self.concatenate = nn.conc
+
+    # def forward(self, x):
+    #     x1, x2 = x
+    #     x1 = self.head(x1)
+    #     x1 = self.body(x1)
+    #     x2 = self.head(x2)
+    #     x2 = self.body(x2)
+    #     x = torch.cat((x1, x2))
+    #     x = self.tail(x)
+    #     return x
+
+    def forward(self, x):
+        x = self.head(x)
+        x = self.body(x)
+        x = self.tail(x)
+        return x
 
 class GrowingGeneratorTriplane(nn.Module):
     def __init__(self, n_channels=32, n_layers=4, pool_dim=8, feat_dim=32, use_norm=True, mlp_dim=32, mlp_layers=0):
