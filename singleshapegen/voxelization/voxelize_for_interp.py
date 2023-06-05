@@ -10,7 +10,7 @@ from trimesh.voxel.encoding import DenseEncoding
 import binvox_rw
 
 
-BINVOX_PATH = "binvox.exe"
+BINVOX_PATH = "binvox"
 
 
 def load_mesh(path: str, normalize=True):
