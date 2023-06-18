@@ -83,6 +83,9 @@ class Config(object):
         group.add_argument('--proj_dir', type=str, default="checkpoints", help="a folder where experiment logs will be saved")
         group.add_argument('--tag', type=str, required=True, help="tag for this experiment run")
         group.add_argument('-g', '--gpu_ids', type=int, default=0, help="which gpu to use. -1 for CPU.")
+        group.add_argument('--iter_cut', type=int, default=0, help="how many iterations till cut points move in spliced model")
+
+
 
     def _add_data_config(self, parser):
         """arguments for data"""

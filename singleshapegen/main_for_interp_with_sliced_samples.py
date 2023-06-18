@@ -24,7 +24,7 @@ def main():
         second_data_list = load_data_fromH5(cfg.second_src_path)
 
         # start training
-        ssg_model.train_interpolated_model_with_sliced_samples(real_data_list, second_data_list)
+        ssg_model.train_interpolated_model_with_sliced_samples(real_data_list, second_data_list, cfg.iter_cut)
     else:
         # load from checkpoint
         n_scales = cfg.ckpt

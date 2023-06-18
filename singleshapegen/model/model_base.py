@@ -480,8 +480,53 @@ class SSGmodelBase(ABC):
         lower_limit = 0 + int(np.ceil(dimension_to_scale * 0.1))
         upper_limit = dimension_to_scale - int(np.ceil(dimension_to_scale * 0.1))
 
+        for _ in pbar:
+            cut_point_x = _step_cut_point(cut_point_x, dimension_to_scale, half_window_size)
+            cut_point_y = _step_cut_point(cut_point_y, dimension_to_scale, half_window_size)
+            cut_point_z = _step_cut_point(cut_point_z, dimension_to_scale, half_window_size)
+
+            cut_point_x, cut_point_y, cut_point_z = _check_bounds((cut_point_x, cut_point_y, cut_point_z), lower_limit,
+                                                                  upper_limit)
+
+            new_model = torch.zeros_like(real_data)
+            new_model[:, :, :cut_point_x, :cut_point_y, :cut_point_z] = real_data[:, :, :cut_point_x, :cut_point_y,
+                                                                        :cut_point_z]
+            new_model[:, :, cut_point_x:, cut_point_y:, cut_point_z:] = second_data[:, :, cut_point_x:, cut_point_y:,
+                                                                        cut_point_z:]
+
+            losses = self._updateStep(new_model)
+
+            pbar.set_postfix(OrderedDict({k: v.item() for k, v in losses.items()}))
+
+            if self.config.vis_frequency is not None and self.clock.step % self.config.vis_frequency == 0:
+                self._visualize_in_training(real_data)
+
+            self.clock.tick()
+
+            if self.clock.step % self.config.save_frequency == 0:
+                self.save_ckpt()
+
+        self.prev_opt_feats = None  # FIXME: move this variable to _draw_fake_in_training
+        self.save_ckpt('latest')
+
+    def _train_single_scale_interpolated_crossed_samples_with_iter_cut(self, real_data: torch.Tensor, second_data: torch.Tensor, iter_cut: int):
+        """train current scale for n iterations"""
+        print(f"scale: {self.scale}, real shape dimensions: {real_data.shape}, noise amp: {self.noiseAmp_list[-1]}")
+        pbar = tqdm(range(self.config.n_iters), desc=f"Train scale {self.scale}")
+        self.prev_opt_feats = None  # buffer of prev scale features for reconstruction
+
+        # SHAPE = (1,1,X,Y,Z)
+        dimension_to_scale = real_data.shape[2]
+        half_window_size = 0.025
+
+        cut_point_x = dimension_to_scale // 2
+        cut_point_y = dimension_to_scale // 2
+        cut_point_z = dimension_to_scale // 2
+        lower_limit = 0 + int(np.ceil(dimension_to_scale * 0.1))
+        upper_limit = dimension_to_scale - int(np.ceil(dimension_to_scale * 0.1))
+
         for i in pbar:
-            if not i % 100:
+            if not i % iter_cut:
                 cut_point_x = _step_cut_point(cut_point_x, dimension_to_scale, half_window_size)
                 cut_point_y = _step_cut_point(cut_point_y, dimension_to_scale, half_window_size)
                 cut_point_z = _step_cut_point(cut_point_z, dimension_to_scale, half_window_size)
@@ -509,45 +554,6 @@ class SSGmodelBase(ABC):
 
         self.prev_opt_feats = None  # FIXME: move this variable to _draw_fake_in_training
         self.save_ckpt('latest')
-
-        # # SHAPE = (1,1,X,Y,Z)
-        # dimension_to_scale = real_data.shape[2]
-        # half_window_size = 0.025
-        #
-        # cut_point_x = dimension_to_scale // 2
-        # cut_point_y = dimension_to_scale // 2
-        # cut_point_z = dimension_to_scale // 2
-        # lower_limit = 0 + int(np.ceil(dimension_to_scale * 0.1))
-        # upper_limit = dimension_to_scale - int(np.ceil(dimension_to_scale * 0.1))
-        #
-        # for _ in pbar:
-        #     cut_point_x = _step_cut_point(cut_point_x, dimension_to_scale, half_window_size)
-        #     cut_point_y = _step_cut_point(cut_point_y, dimension_to_scale, half_window_size)
-        #     cut_point_z = _step_cut_point(cut_point_z, dimension_to_scale, half_window_size)
-        #
-        #     cut_point_x, cut_point_y, cut_point_z = _check_bounds((cut_point_x, cut_point_y, cut_point_z), lower_limit,
-        #                                                           upper_limit)
-        #
-        #     new_model = torch.zeros_like(real_data)
-        #     new_model[:, :, :cut_point_x, :cut_point_y, :cut_point_z] = real_data[:, :, :cut_point_x, :cut_point_y,
-        #                                                                 :cut_point_z]
-        #     new_model[:, :, cut_point_x:, cut_point_y:, cut_point_z:] = second_data[:, :, cut_point_x:, cut_point_y:,
-        #                                                                 cut_point_z:]
-        #
-        #     losses = self._updateStep(new_model)
-        #
-        #     pbar.set_postfix(OrderedDict({k: v.item() for k, v in losses.items()}))
-        #
-        #     if self.config.vis_frequency is not None and self.clock.step % self.config.vis_frequency == 0:
-        #         self._visualize_in_training(real_data)
-        #
-        #     self.clock.tick()
-        #
-        #     if self.clock.step % self.config.save_frequency == 0:
-        #         self.save_ckpt()
-        #
-        # self.prev_opt_feats = None  # FIXME: move this variable to _draw_fake_in_training
-        # self.save_ckpt('latest')
 
     def train(self, real_data_list: list):
         """train on a list of multi-scale 3D shapes (coarse-to-fine).
@@ -649,7 +655,7 @@ class SSGmodelBase(ABC):
             # train for current scale
             self._train_single_scale_interpolated(self.real_list[s], self.second_list[s])
             self.scale += 1
-    def train_interpolated_model_with_sliced_samples(self, real_data_list: list, second_data_list: list):
+    def train_interpolated_model_with_sliced_samples(self, real_data_list: list, second_data_list: list, iter_cut: int):
         """train on a list of multi-scale 3D shapes (coarse-to-fine).
 
         Args:
@@ -680,7 +686,11 @@ class SSGmodelBase(ABC):
             self.noiseAmp_list.append(noise_amp)
 
             # train for current scale
-            self._train_single_scale_interpolated_crossed_samples(self.real_list[s], self.second_list[s])
+            if iter_cut:
+                self._train_single_scale_interpolated_crossed_samples_with_iter_cut(self.real_list[s], self.second_list[s], iter_cut)
+            else:
+                self._train_single_scale_interpolated_crossed_samples(self.real_list[s], self.second_list[s])
+
             self.scale += 1
 
     def _set_real_data(self, real_data_list: list):
